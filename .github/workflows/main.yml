@@ -3,7 +3,7 @@ name: ESP Arduino code Build
 on:
   push:
     branches:
-      - master
+      - main
     # paths:
     #   - 'src/**'
 
