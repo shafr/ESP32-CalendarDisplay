@@ -9,7 +9,7 @@
 #include "text.h"
 #include "cal.h"
 
-#include "../fonts/u8g2_arialB42_tf.c"
+#include "../../fonts/u8g2_arialB42_tf.c"
 
 /* Battery Volatage */
 #define ADC_PIN A13
