@@ -1,22 +1,22 @@
 /*
  * Weather display
- * 
- * Version: see library.properties 
- * 
+ *
+ * Version: see library.properties
+ *
  * Controller (Driver):
  *  - ESP32: https://www.adafruit.com/product/3405
- * 
+ *
  * Display:
  *  - Display: https://www.waveshare.com/wiki/7.5inch_HD_e-Paper_HAT_(B)
  *  - Driver HAT: https://www.waveshare.com/product/displays/e-paper/driver-boards/e-paper-driver-hat.htm
  *  - Driver: https://github.com/ZinggJM/GxEPD2 (Jean-Marc Zingg) Version 1.2.3
- * 
+ *
  * Other:
  *  - ArduinoJson: https://arduinojson.org/  V6.x or above
  *  - WiFi: Arduino IDE
  *  - HTTPClient: Arduino IDE
  *  - WiFiClientSecure: Arduino IDE
- * 
+ *
  */
 
 /* enable or disable GxEPD2_GFX base class */
@@ -45,7 +45,7 @@ GxEPD2_3C < GxEPD2_750c_Z90, GxEPD2_750c_Z90::HEIGHT / 4 > display(GxEPD2_750c_Z
 U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
 
 /* WiFi dependencies */
-#include "credentials.h"  
+#include "credentials.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
@@ -56,10 +56,6 @@ U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
 /* Realtime Clock */
 #include "RTClib.h"
 RTC_PCF8523 rtc;
-
-/* Piezzo Buzzer */
-int GPIO_12 = 12;
-#include "src/buzzer.h"
 
 /* Structures */
 #include "src/structures.h"
@@ -73,13 +69,12 @@ bool hasBirthday = false;       // Day has a birthday
 bool hasNotification = false;   // Notification after refresh
 
 /* Inital value for RTC memory */
-RTC_DATA_ATTR int playAlarmType = 0;
-RTC_DATA_ATTR bool ntp_update = false;
+RTC_DATA_ATTR int ntp_update = false;
 RTC_DATA_ATTR int ntp_last_update = 0;
 
 /* UI dependencies */
 #include "src/sidebar.h"
-#include "src/events.h" 
+#include "src/events.h"
 
 /* Setup */
 void setup()
@@ -88,9 +83,6 @@ void setup()
   Serial.begin(115200);
   Serial.println();
   Serial.println("Setup");
-
-  // Setup RTC
-  pinMode(GPIO_12, OUTPUT);
 
   // Check if the RTC PCF8523 is available
   if (!rtc.begin())
@@ -111,7 +103,7 @@ void setup()
   display.init(115200);
   display.setRotation(0);
   display.setFullWindow();
-  u8g2Fonts.begin(display); 
+  u8g2Fonts.begin(display);
 
   // Current time
   DateTime now = rtc.now();
@@ -145,27 +137,6 @@ void setup()
     refresh = eventList(display, u8g2Fonts, rtc, Events);
   }
   while (display.nextPage());
-
-  // Play Notification sound
-  if(playAlarmType == 1)
-  {
-    playNotification();
-    playAlarmType = 0;
-    Serial.println(F("Play Notification Alert"));
-  }
-  else if(playAlarmType == 2 )
-  {
-    playHappyBirthday();
-    playAlarmType = 0;
-    Serial.println(F("Play B-Day Alert"));
-  }
-  else if(playAlarmType == 3 )
-  {
-    playNotification();
-    playHappyBirthday();
-    playAlarmType = 0;
-    Serial.println(F("Play Both Alerts"));
-  }
 
   // Put ESP32 into sleep mode
   espSLEEP(refresh);
@@ -227,10 +198,10 @@ uint8_t StartWiFi()
       Serial.println("Updated Time from RTC");
       rtc.adjust(DateTime( (timeinfo->tm_year + 1900) , timeinfo->tm_mon+1, timeinfo->tm_mday, timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec));
       showDate( rtc.now() );
-      
+
       ntp_update = false;
     }
-    
+
   }
   else Serial.println("WiFi connection *** FAILED ***");
   return connectionStatus;
@@ -269,51 +240,6 @@ void espSLEEP(long refresh)
   // Check if the sleep lasts into the next day. In that case adjust the sleep time to update the date.
   if( now.unixtime() )
 
-  // Play Alarm sounds here, since the display is done refreshing
-  if(hasNotification)
-  {
-    playAlarmType = 1;
-  }
-  
-  // Check if the Birthday sound needs to be played.
-
-  // 1 - Alarm
-  // 2 - Bday
-  // 3 - Both
-
-  if(hasBirthday && playBday)
-  {
-    // Get the set time for a birthday alarm
-    DateTime bday (now.year(), now.month(), now.day(), playBdayTime, 0, 0);
-
-    // Refresh has been set by appointment
-    if( refresh > 0 && ( now.unixtime() + refresh ) > bday.unixtime() && now.unixtime() < bday.unixtime() )
-    {
-      refresh = bday.unixtime() - now.unixtime();
-      if(playAlarmType == 1)
-      {
-        playAlarmType = 3;
-      }
-      else{
-        playAlarmType = 2;
-      }
-    }
-
-    // Standard refresh is used
-    if( refresh == 0 && ( now.unixtime() + SleepDuration * 60 ) > bday.unixtime() && now.unixtime() < bday.unixtime() )
-    {
-      refresh = bday.unixtime() - now.unixtime();
-      if(playAlarmType == 1)
-      {
-        playAlarmType = 3;
-      }
-      else{
-        playAlarmType = 2;
-      }
-    }
-  }
-
-
   if(refresh > 0)
   {
     SleepTimer = refresh;
@@ -322,12 +248,6 @@ void espSLEEP(long refresh)
   if(refresh > SleepDuration * 60)
   {
     SleepTimer = SleepDuration * 60;
-    playAlarmType = 0;
-  }
-
-  if(!playAlarm)
-  {
-    playAlarmType = 0;
   }
 
   // Prevent the Sleeptimer from being too short
@@ -415,7 +335,7 @@ bool parseIcalJSON(String json)
 
   // allocate the JsonDocument
   DynamicJsonDocument doc(20 * 1024);
-  
+
   // Deserialize the JSON document
   DeserializationError error = deserializeJson(doc, json.c_str());
   // Test if parsing succeeds.
@@ -471,7 +391,7 @@ bool parseWeathermapJSON(WiFiClient& json)
 
   // allocate the JsonDocument
   DynamicJsonDocument doc(3 * 1024);
-  
+
   // Deserialize the JSON document
   DeserializationError error = deserializeJson(doc, json);
   // Test if parsing succeeds.
