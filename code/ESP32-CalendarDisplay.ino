@@ -427,16 +427,9 @@ bool parseWeathermapJSON(WiFiClient& json)
 
 /* Show Date over Serial */
 void showDate(const DateTime& dt) {
-    Serial.print(dt.year(), DEC);
-    Serial.print('/');
-    Serial.print(dt.month(), DEC);
-    Serial.print('/');
-    Serial.print(dt.day(), DEC);
-    Serial.print(' ');
-    Serial.print(dt.hour(), DEC);
-    Serial.print(':');
-    Serial.print(dt.minute(), DEC);
-    Serial.print(':');
-    Serial.print(dt.second(), DEC);
-    Serial.println();
+    char datetime[25];
+    snprintf(datetime, sizeof(datetime), "%04d/%02d/%02d %02d:%02d:%02d",
+        dt.year(), dt.month(), dt.day(),
+        dt.hour(), dt.minute(), dt.second());
+    Serial.println(datetime);
 }

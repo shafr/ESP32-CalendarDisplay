@@ -1,6 +1,5 @@
 /*
  * Drawing instructions for Weather icons
- * 
  */
 
 #include "Arduino.h"
@@ -8,52 +7,19 @@
 #include "icons.h"
 #include "text.h"
 #include "cal.h"
+#include <time.h>
 
 #include "../../fonts/u8g2_arialB42_tf.c"
 
-/* Battery Volatage */
+/* Battery Voltage */
 #define ADC_PIN A13
-
-bool isLeapYear(int year)
-{
-    if (((year % 4 == 0) && (year % 100 != 0)) || (year % 400 == 0))
-        return true;
-    return false;
-}
-
-int getDaysInMonth(int month, int year)
-{
-    int daysInMonth[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    if (month != 2)
-        return daysInMonth[(month-1)%12];
-    if(isLeapYear(year))
-        return 29;
-    return 28;
-}
-
-int getDayOfWeek(int year, int month, int day)
-{
-    uint16_t months[] = {
-        0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365         };   // days until 1st of month
-    
-    uint32_t days = year * 365;        // days until year 
-    for (uint16_t i = 4; i < year; i += 4) if (isLeapYear(i) ) days++;     // adjust leap years, test only multiple of 4 of course
-    
-    days += months[month-1] + day;    // add the days of this year
-    if ((month > 2) && isLeapYear(year)) days++;  // adjust 1 if this year is a leap year, but only after febr
-    
-    // make Sunday 0
-    days--;
-    if(days < 0)
-        days+= 7;
-    return days % 7;   // remove all multiples of 7
-}
 
 void miniCalendar(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF8523& rtc )
 {
-
     // Time and Date
     DateTime now = rtc.now();
+    time_t t = now.unixtime();
+    struct tm* timeinfo = localtime(&t);
 
     int offset = 230;
 
@@ -64,7 +30,7 @@ void miniCalendar(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF
     float col_width = (286-15)/7;
     u8g2Fonts.setForegroundColor(GxEPD_WHITE);
     u8g2Fonts.setFont(u8g2_font_helvB12_tf);
-    
+
     offset += 30;
 
     for(byte r = 0; r < 7; r++){
@@ -79,8 +45,14 @@ void miniCalendar(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF
 
     offset += 24;
 
-    int days = getDaysInMonth( now.month(), now.year() );
-    int weekday = getDayOfWeek(now.year(), now.month(), 1);
+    // Get number of days in month and first day of month
+    int days = timeinfo->tm_mday + timeinfo->tm_yday - timeinfo->tm_yday % timeinfo->tm_mday;
+
+    // Get first day of month
+    struct tm first_day = *timeinfo;
+    first_day.tm_mday = 1;
+    mktime(&first_day);
+    int weekday = first_day.tm_wday;
 
     u8g2Fonts.setFont(u8g2_font_helvR12_tf);
 
@@ -128,7 +100,7 @@ void sideBar(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF8523&
     itoa(now.day(),day,10);
     const char* weekday = daysOfTheWeek[now.dayOfTheWeek()];
     const char* month = monthsOfTheYear[(now.month()-1)];
- 
+
     // Red sidebar container
     display.fillRect(0, 0, 300, 528, GxEPD_RED);
 

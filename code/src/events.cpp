@@ -1,6 +1,6 @@
 /*
  * Drawing instructions for Weather icons
- * 
+ *
  */
 
 #include "events.h"
@@ -25,11 +25,11 @@ int eventItem(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, int y, cons
     }
     else if( String(category) == "Tasks"){
         iconTask( display, 365, y+2, 20, GxEPD_RED, GxEPD_WHITE);
-        textEllipsis(u8g2Fonts, 390, y+20, (800-390), description );    
+        textEllipsis(u8g2Fonts, 390, y+20, (800-390), description );
     }
     // else if( String(category) == "Holidays"){
     //     iconAppointmentAlt( display, 365, y+1, 20, GxEPD_RED, GxEPD_WHITE);
-    //     textEllipsis(u8g2Fonts, 390, y+20, (800-390), description );    
+    //     textEllipsis(u8g2Fonts, 390, y+20, (800-390), description );
     // }
     else{
         textEllipsis(u8g2Fonts, 365, y+20, (800-365), description );
@@ -64,7 +64,7 @@ int eventItem(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, int y, cons
 }
 
 int eventDate(U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, int y, const char *day, const char *weekday){
-    
+
     // Day
     u8g2Fonts.setForegroundColor(GxEPD_BLACK);
     u8g2Fonts.setFont(u8g2_font_helvB18_tf);
@@ -124,7 +124,6 @@ void eventNext(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, const char
 
 long eventList(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF8523& rtc, Event_type* events )
 {
-
     u8g2Fonts.setFontMode(1);
     u8g2Fonts.setFontDirection(0);
     u8g2Fonts.setBackgroundColor(GxEPD_WHITE);
@@ -136,12 +135,15 @@ long eventList(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF852
     bool active = false;
     bool next = false;
     DateTime now = rtc.now();
-
-    // Refresh Time min
     long refresh = 0;
-
-    // Build List
     bool isEmpty = true;
+
+    // Time-related variables
+    char startTimeStr[10];
+    String endTime;
+    time_t sTime;
+    struct tm *lt;
+
     for (byte r = 0; r < 10; r++) {
 
         // Check if entry should be skipped
@@ -189,55 +191,47 @@ long eventList(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF852
             start = eventItem(display, u8g2Fonts, start, events[r].description, events[r].location, "all-day", "", events[r].categories, false );
         }
         else{
-            String startTime;
-            char min[3];
-            sprintf(min, "%02d", lt->tm_min);
+            time_t sTime = events[r].starttime;
+            struct tm *lt = localtime(&sTime);
 
-            if(lt->tm_hour > 12)
-                startTime = String(lt->tm_hour-12) + ":" + String(min) + " pm";
-            else
-                startTime = String(lt->tm_hour) + ":" + String(min) + " am";
+            strftime(startTimeStr, sizeof(startTimeStr), "%I:%M %p", lt);
+            startTimeStr[0] = (startTimeStr[0] == '0' ? ' ' : startTimeStr[0]); // Remove leading zero
 
-            String endTime = "";
-            if( events[r].endtime > 0){
+            endTime = "";
+            if(events[r].endtime > 0) {
                 time_t eTime = events[r].endtime;
                 struct tm *ltend = localtime(&eTime);
-                
-                sprintf(min, "%02d", ltend->tm_min);
+                char endTimeStr[10];
+                strftime(endTimeStr, sizeof(endTimeStr), "%I:%M %p", ltend);
+                endTimeStr[0] = (endTimeStr[0] == '0' ? ' ' : endTimeStr[0]); // Remove leading zero
+                endTime = String(endTimeStr);
 
-                if(ltend->tm_hour > 12)
-                    endTime = String(ltend->tm_hour-12) + ":" + String(min) + " pm";
-                else
-                    endTime = String(ltend->tm_hour) + ":" + String(min) + " am";
-
-                if( sTime <= now.unixtime() && eTime >= now.unixtime() ){
+                if(sTime <= now.unixtime() && eTime >= now.unixtime()) {
                     active = true;
-                    // Refresh time in minutes
-                    refresh = ( events[r].endtime - now.unixtime() );
+                    refresh = (events[r].endtime - now.unixtime());
                 }
-
             }
 
-            start = eventItem(display, u8g2Fonts, start, events[r].description, events[r].location, startTime.c_str(), endTime.c_str(), events[r].categories, active );
+            start = eventItem(display, u8g2Fonts, start, events[r].description, events[r].location, startTimeStr, endTime.c_str(), events[r].categories, active);
+        }
 
-            // Check if the event is up next
-            if( !active && !next && sTime > now.unixtime() && now.day() == lt->tm_mday){
-                eventNext(display, u8g2Fonts, events[r].description, String(startTime + " - " + endTime).c_str(), events[r].location);
-                next = true;
+        // Check if the event is up next
+        if (!active && !next && sTime > now.unixtime() && now.day() == lt->tm_mday) {
+            String timeRange = String(startTimeStr) + " - " + endTime;
+            eventNext(display, u8g2Fonts, events[r].description, timeRange.c_str(), events[r].location);
+            next = true;
 
-                // Refresh time in minutes
-                if(refresh == 0)
-                {
-                    refresh = ( events[r].endtime - now.unixtime() );
-                    hasNotification = true;
-                }
+            // Refresh time in minutes
+            if(refresh == 0) {
+                refresh = (events[r].endtime - now.unixtime());
+                hasNotification = true;
             }
         }
 
         // Terminate if next is shown
         if (start > 350 && next)
             break;
-        
+
         // Terminate if list would overflow
         if (start > 490 )
             break;
@@ -253,6 +247,6 @@ long eventList(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF852
         u8g2Fonts.setFont(u8g2_font_helvR18_tf);
         textCenter(u8g2Fonts, 365 + ((800-365)/2), 275, "No Events" );
     }
-    
+
     return refresh;
 }
