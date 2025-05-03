@@ -14,16 +14,21 @@
 /* Battery Voltage */
 #define ADC_PIN A13
 
-void miniCalendar(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF8523& rtc )
+void miniCalendar(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, struct tm& timeinfo)
 {
-    // Time and Date
-    DateTime now = rtc.now();
-    time_t t = now.unixtime();
-    struct tm* timeinfo = localtime(&t);
+    // Get time values from timeinfo
+    int currentDay = timeinfo.tm_mday;
+    int currentMonth = timeinfo.tm_mon + 1;  // tm_mon is 0-based
+    int currentYear = timeinfo.tm_year + 1900;
+
+    // Calculate days in current month
+    int daysInMonth[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    if (currentYear % 4 == 0 && (currentYear % 100 != 0 || currentYear % 400 == 0))
+        daysInMonth[1] = 29;  // Leap year
 
     int offset = 230;
 
-    const char* month = monthsOfTheYear[(now.month()-1)];
+    const char* month = monthsOfTheYear[currentMonth - 1];
     u8g2Fonts.setFont(u8g2_font_helvB14_tf);
 
     // Add the days of the week
@@ -46,10 +51,10 @@ void miniCalendar(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF
     offset += 24;
 
     // Get number of days in month and first day of month
-    int days = timeinfo->tm_mday + timeinfo->tm_yday - timeinfo->tm_yday % timeinfo->tm_mday;
+    int days = daysInMonth[currentMonth - 1];
 
     // Get first day of month
-    struct tm first_day = *timeinfo;
+    struct tm first_day = timeinfo;
     first_day.tm_mday = 1;
     mktime(&first_day);
     int weekday = first_day.tm_wday;
@@ -68,7 +73,7 @@ void miniCalendar(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF
             if( day > days)
                 break;
 
-            if( now.day() == day){
+            if( currentDay == day){
                 int sw = u8g2Fonts.getUTF8Width( String(day).c_str() );
 
                 u8g2Fonts.setForegroundColor(GxEPD_WHITE);
@@ -89,17 +94,18 @@ void miniCalendar(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF
     }
 }
 
-void sideBar(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF8523& rtc, Weather_type* weather )
+void sideBar(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, struct tm& timeinfo, Weather_type* weather)
 {
-
-    // Time and Date
-    DateTime now = rtc.now();
-
-    // Day, Weekday, Month and Year
     char day[3];
-    itoa(now.day(),day,10);
-    const char* weekday = daysOfTheWeek[now.dayOfTheWeek()];
-    const char* month = monthsOfTheYear[(now.month()-1)];
+    char weekDay[20];
+
+    // Format day number
+    snprintf(day, sizeof(day), "%02d", timeinfo.tm_mday);
+
+    // Get weekday name
+    const char* weekdays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+    strncpy(weekDay, weekdays[timeinfo.tm_wday], sizeof(weekDay) - 1);
+    weekDay[sizeof(weekDay) - 1] = '\0';  // Ensure null termination
 
     // Red sidebar container
     display.fillRect(0, 0, 300, 528, GxEPD_RED);
@@ -146,24 +152,24 @@ void sideBar(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF8523&
     // Weekday
     u8g2Fonts.setFont(u8g2_font_arialB42_tf);
     // textCenter(u8g2Fonts, 150, 125, weekday);
-    textCenter(u8g2Fonts, 150, 167, weekday);
+    textCenter(u8g2Fonts, 150, 167, weekDay);
 
     // Month
-    w = u8g2Fonts.getUTF8Width(weekday);
+    w = u8g2Fonts.getUTF8Width(weekDay);
     u8g2Fonts.setFont(u8g2_font_helvR14_tf);
     // u8g2Fonts.setCursor( 150 - w/2 ,150);
     u8g2Fonts.setCursor( 150 - w/2 ,192);
-    u8g2Fonts.print(month);
+    u8g2Fonts.print(monthsOfTheYear[timeinfo.tm_mon]);
 
     // Year
-    int m = u8g2Fonts.getUTF8Width(month);
+    int m = u8g2Fonts.getUTF8Width(monthsOfTheYear[timeinfo.tm_mon]);
     int space = u8g2Fonts.getUTF8Width(" ");
     // u8g2Fonts.setCursor( 150 - w/2 + m + space ,150);
     u8g2Fonts.setCursor( 150 - w/2 + m + space ,192);
-    u8g2Fonts.print(now.year());
+    u8g2Fonts.print(timeinfo.tm_year + 1900);
 
     // Add Mini calendar if there are no task
-    miniCalendar(display, u8g2Fonts, rtc );
+    miniCalendar(display, u8g2Fonts, timeinfo);
 
     if( String(weather[0].temperature).length() > 0 && String(weather[0].summary).length() > 0 ){
 

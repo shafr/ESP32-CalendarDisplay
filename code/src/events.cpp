@@ -122,8 +122,24 @@ void eventNext(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, const char
     }
 }
 
-long eventList(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF8523& rtc, Event_type* events )
+long eventList(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, struct tm& timeinfo, Event_type* events)
 {
+    long refresh = 0;
+    int offset = 0;
+    bool hasEvents = false;
+    bool active = false;
+    bool next = false;
+    bool isEmpty = true;
+
+    // Get current date values
+    int currentDay = timeinfo.tm_mday;
+    int currentMonth = timeinfo.tm_mon + 1;  // tm_mon is 0-based
+    int currentYear = timeinfo.tm_year + 1900;
+
+    // Format for comparing dates
+    char currentDate[11];
+    snprintf(currentDate, sizeof(currentDate), "%04d-%02d-%02d", currentYear, currentMonth, currentDay);
+
     u8g2Fonts.setFontMode(1);
     u8g2Fonts.setFontDirection(0);
     u8g2Fonts.setBackgroundColor(GxEPD_WHITE);
@@ -132,11 +148,6 @@ long eventList(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF852
     int start = 20; // Top padding
     int mday;
     int yday;
-    bool active = false;
-    bool next = false;
-    DateTime now = rtc.now();
-    long refresh = 0;
-    bool isEmpty = true;
 
     // Time-related variables
     char startTimeStr[10];
@@ -163,7 +174,7 @@ long eventList(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF852
         }
 
         // Add gap indicator if today has no events
-        if(r == 0 && lt->tm_mday > now.day() ){
+        if(r == 0 && lt->tm_mday > timeinfo.tm_mday ){
             start = eventGap(display, start - 20);
             start += 15;
         }
@@ -181,7 +192,7 @@ long eventList(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF852
         }
 
         // Check if there is a birthday today
-        if( String(events[r].categories) == "Birthdays" && now.day() == lt->tm_mday )
+        if( String(events[r].categories) == "Birthdays" && timeinfo.tm_mday == lt->tm_mday )
         {
             hasBirthday = true;
         }
@@ -206,9 +217,9 @@ long eventList(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF852
                 endTimeStr[0] = (endTimeStr[0] == '0' ? ' ' : endTimeStr[0]); // Remove leading zero
                 endTime = String(endTimeStr);
 
-                if(sTime <= now.unixtime() && eTime >= now.unixtime()) {
+                if(sTime <= timeinfo.tm_sec && eTime >= timeinfo.tm_sec) {
                     active = true;
-                    refresh = (events[r].endtime - now.unixtime());
+                    refresh = (events[r].endtime - timeinfo.tm_sec);
                 }
             }
 
@@ -216,14 +227,14 @@ long eventList(GxEPD2_GFX& display, U8G2_FOR_ADAFRUIT_GFX& u8g2Fonts, RTC_PCF852
         }
 
         // Check if the event is up next
-        if (!active && !next && sTime > now.unixtime() && now.day() == lt->tm_mday) {
+        if (!active && !next && sTime > timeinfo.tm_sec && timeinfo.tm_mday == lt->tm_mday) {
             String timeRange = String(startTimeStr) + " - " + endTime;
             eventNext(display, u8g2Fonts, events[r].description, timeRange.c_str(), events[r].location);
             next = true;
 
             // Refresh time in minutes
             if(refresh == 0) {
-                refresh = (events[r].endtime - now.unixtime());
+                refresh = (events[r].endtime - timeinfo.tm_sec);
                 hasNotification = true;
             }
         }

@@ -53,9 +53,10 @@ U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
 /* JSON Parsing */
 #include <ArduinoJson.h>
 
-/* Realtime Clock */
-#include "RTClib.h"
-RTC_PCF8523 rtc;
+/* Time Management */
+#include <time.h>
+time_t now;
+struct tm timeinfo;
 
 /* Structures */
 #include "src/structures.h"
@@ -67,10 +68,6 @@ Weather_type Weather[1];
 #include "src/common.h"
 bool hasBirthday = false;       // Day has a birthday
 bool hasNotification = false;   // Notification after refresh
-
-/* Inital value for RTC memory */
-RTC_DATA_ATTR int ntp_update = false;
-RTC_DATA_ATTR int ntp_last_update = 0;
 
 /* UI dependencies */
 #include "src/sidebar.h"
@@ -84,43 +81,13 @@ void setup()
   Serial.println();
   Serial.println("Setup");
 
-  // Check if the RTC PCF8523 is available
-  if (!rtc.begin())
-  {
-      Serial.println("Error: RTC PCF8523 not found.");
-      while (1);
-  }
-
-  // Set the clock's time if not initialized
-  if (!rtc.initialized() || rtc.lostPower())
-  {
-      Serial.println("Warning: RTC needs to be initialized");
-      rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-      ntp_update = true;
-  }
-
   // Display
   display.init(115200);
   display.setRotation(0);
   display.setFullWindow();
   u8g2Fonts.begin(display);
 
-  // Current time
-  DateTime now = rtc.now();
-  showDate(now);
-
-  // Check if time needs to be synced
-  if(now.hour() < ntp_last_update){
-    // Trigger update
-    ntp_update = true;
-  }
-  // Set hours since last update
-  ntp_last_update = now.hour();
-
-  Serial.print("NPT hour: ");
-  Serial.println( ntp_last_update );
-
-  // Time and Timezone
+  // Time and Calendar Data
   getCalendarData();
 
   // Set refresh timer
@@ -130,11 +97,15 @@ void setup()
   display.firstPage();
   do
   {
+    // Get current time
+    time(&now);
+    localtime_r(&now, &timeinfo);
+
     // Sidebar
-    sideBar(display, u8g2Fonts, rtc, Weather);
+    sideBar(display, u8g2Fonts, timeinfo, Weather);
 
     // Event List
-    refresh = eventList(display, u8g2Fonts, rtc, Events);
+    refresh = eventList(display, u8g2Fonts, timeinfo, Events);
   }
   while (display.nextPage());
 
@@ -151,7 +122,6 @@ void loop()
 uint8_t StartWiFi()
 {
   Serial.print("\r\nConnecting to: "); Serial.println(String(ssid));
-  // IPAddress dns(8, 8, 8, 8); // Google DNS
   WiFi.disconnect();
   WiFi.mode(WIFI_STA); // switch off AP
   WiFi.setAutoConnect(true);
@@ -173,35 +143,23 @@ uint8_t StartWiFi()
   if (connectionStatus == WL_CONNECTED) {
     Serial.println("WiFi connected at: " + WiFi.localIP().toString());
 
-    if( ntp_update ){
+    // Configure time using NTP
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
-      Serial.println("Current Time from RTC");
-      showDate( rtc.now() );
-
-      Serial.println("Start NTP Server Update");
-      configTime(0, 0, ntpServer);
-      delay(2000);
-
-      Serial.println("Updated Time from ESP");
-
-      setenv("TZ", timezoneStr, 1);
-
-      time_t ESPnow = time(nullptr);
-      Serial.println(ctime(&ESPnow));
-
-      struct tm *timeinfo;
-      time(&ESPnow);
-      timeinfo = localtime(&ESPnow);
-
-      Serial.println(timeinfo->tm_isdst);
-
-      Serial.println("Updated Time from RTC");
-      rtc.adjust(DateTime( (timeinfo->tm_year + 1900) , timeinfo->tm_mon+1, timeinfo->tm_mday, timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec));
-      showDate( rtc.now() );
-
-      ntp_update = false;
+    // Wait for time to be set
+    int retry = 0;
+    while(!time(nullptr) && retry < 10) {
+        Serial.print(".");
+        delay(1000);
+        retry++;
     }
 
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    if(timeinfo.tm_year > (2020 - 1900)) {
+        Serial.println("\nTime Synchronized");
+        showTime();
+    }
   }
   else Serial.println("WiFi connection *** FAILED ***");
   return connectionStatus;
@@ -220,25 +178,23 @@ void espSLEEP(long refresh)
   display.powerOff();
   long SleepTimer = SleepDuration * 60; // Sleep duration in seconds
 
-  DateTime now = rtc.now();
+  time(&now);
+  localtime_r(&now, &timeinfo);
 
   // Change Refresh time to longer duration to save power
-  if(now.hour() >= PowerSaveStart || now.hour() < PowerSaveEnd )
+  if(timeinfo.tm_hour >= PowerSaveStart || timeinfo.tm_hour < PowerSaveEnd )
   {
     SleepTimer = 7200;
 
-    if( now.hour() < PowerSaveEnd && (now.hour() + ( SleepTimer / 3600 )) > PowerSaveEnd  )
+    if( timeinfo.tm_hour < PowerSaveEnd && (timeinfo.tm_hour + ( SleepTimer / 3600 )) > PowerSaveEnd  )
     {
-        SleepTimer  =  (PowerSaveEnd * 3600) - ( (now.hour() * 3600) + (now.minute() * 60) + now.second() );
+        SleepTimer  =  (PowerSaveEnd * 3600) - ( (timeinfo.tm_hour * 3600) + (timeinfo.tm_min * 60) + timeinfo.tm_sec );
         if( SleepTimer < (SleepDuration * 60) )
         {
             SleepTimer = SleepTimer + SleepDuration * 60;
         }
     }
   }
-
-  // Check if the sleep lasts into the next day. In that case adjust the sleep time to update the date.
-  if( now.unixtime() )
 
   if(refresh > 0)
   {
@@ -425,11 +381,11 @@ bool parseWeathermapJSON(WiFiClient& json)
   return true;
 }
 
-/* Show Date over Serial */
-void showDate(const DateTime& dt) {
+/* Show Time over Serial */
+void showTime() {
     char datetime[25];
     snprintf(datetime, sizeof(datetime), "%04d/%02d/%02d %02d:%02d:%02d",
-        dt.year(), dt.month(), dt.day(),
-        dt.hour(), dt.minute(), dt.second());
+        timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+        timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
     Serial.println(datetime);
 }
