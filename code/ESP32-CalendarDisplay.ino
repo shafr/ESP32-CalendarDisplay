@@ -188,7 +188,7 @@ void espSLEEP(long refresh)
 
     if( timeinfo.tm_hour < PowerSaveEnd && (timeinfo.tm_hour + ( SleepTimer / 3600 )) > PowerSaveEnd  )
     {
-        SleepTimer  =  (PowerSaveEnd * 3600) - ( (timeinfo.tm_hour * 3600) + (timeinfo.tm_min * 60) + timeinfo.tm_sec );
+        SleepTimer  =  (PowerSaveEnd * 3600) - ( (timeinfo.tm_hour * 3600) + (timeinfo.tm_min * 60) + (timeinfo.tm_sec) );
         if( SleepTimer < (SleepDuration * 60) )
         {
             SleepTimer = SleepTimer + SleepDuration * 60;
@@ -290,8 +290,8 @@ bool parseIcalJSON(String json)
   Serial.print(F("\nCreating object... Calendar"));
 
   // allocate the JsonDocument
-  DynamicJsonDocument doc(20 * 1024);
-
+  // JsonDocument doc(20 * 1024);
+  JsonDocument doc;
   // Deserialize the JSON document
   DeserializationError error = deserializeJson(doc, json.c_str());
   // Test if parsing succeeds.
@@ -301,37 +301,23 @@ bool parseIcalJSON(String json)
     return false;
   }
 
-  Serial.println(doc.memoryUsage());
-
-  if(doc.containsKey("events"))
+  if(doc["events"].is<JsonArray>())
   {
-    if(doc["events"].size() > 0){
-      for(byte r = 0; r < 10; r++){
-        if(doc["events"][r].containsKey("gmtoffset")){
-          Events[r].starttime = doc["events"][r]["start"].as<time_t>() + doc["events"][r]["gmtoffset"].as<int>() * 60;
-          Events[r].endtime = doc["events"][r]["end"].as<time_t>() + doc["events"][r]["gmtoffset"].as<int>() * 60;
-        }
-        else{
-          Events[r].starttime = doc["events"][r]["start"].as<time_t>() + doc["gmtoffset"].as<int>() * 60;
-          Events[r].endtime = doc["events"][r]["end"].as<time_t>() + doc["gmtoffset"].as<int>() * 60;
-        }
+    JsonArray events = doc["events"].as<JsonArray>();
+    if(events.size() > 0){
+      for(byte r = 0; r < min((size_t)10, events.size()); r++){
+        // Handle GMT offset
+        int gmtOffset = doc["events"][r]["gmtoffset"].is<int>() ?
+                       doc["events"][r]["gmtoffset"].as<int>() :
+                       doc["gmtoffset"].as<int>();
 
+        Events[r].starttime = doc["events"][r]["start"].as<time_t>() + gmtOffset * 60;
+        Events[r].endtime = doc["events"][r]["end"].as<time_t>() + gmtOffset * 60;
         Events[r].description = doc["events"][r]["summary"].as<const char*>();
-        if(doc["events"][r]["location"] == nullptr) {
-          Events[r].location = "";
-        }
-        else{
-          Events[r].location = doc["events"][r]["location"].as<const char*>();
-        }
-
-        if(doc["events"][r]["categories"] == nullptr) {
-          Events[r].categories = "";
-        }
-        else{
-          Events[r].categories = doc["events"][r]["categories"].as<const char*>();
-        }
+        Events[r].location = doc["events"][r]["location"].isNull() ? "" : doc["events"][r]["location"].as<const char*>();
+        Events[r].categories = doc["events"][r]["categories"].isNull() ? "" : doc["events"][r]["categories"].as<const char*>();
         Events[r].alarm = false;
-        Events[r].allday = doc["events"][r]["allday"];
+        Events[r].allday = doc["events"][r]["allday"].as<bool>();
       }
     }
   }
@@ -346,7 +332,8 @@ bool parseWeathermapJSON(WiFiClient& json)
   Serial.print(F("Parsing Weather"));
 
   // allocate the JsonDocument
-  DynamicJsonDocument doc(3 * 1024);
+  JsonDocument doc;
+  //JsonDocument doc(3 * 1024);
 
   // Deserialize the JSON document
   DeserializationError error = deserializeJson(doc, json);
@@ -357,22 +344,18 @@ bool parseWeathermapJSON(WiFiClient& json)
     return false;
   }
 
-  Serial.println(doc.memoryUsage());
-
-  // JsonObject root = doc.as<JsonObject>();
-
-  if(doc.containsKey("weather"))
+  if(doc["weather"].is<JsonArray>() && doc["weather"].size() > 0)
   {
-    if(doc["weather"].size() > 0){
-      Weather[0].summary     = doc["weather"][0]["description"].as<const char*>();
-      Weather[0].icon        = doc["weather"][0]["icon"].as<const char*>();
-    }
+    Weather[0].summary = doc["weather"][0]["description"].as<const char*>();
+    Weather[0].icon = doc["weather"][0]["icon"].as<const char*>();
   }
-  if(doc.containsKey("main")){
+
+  if(doc["main"].is<JsonObject>())
+  {
     Weather[0].temperature = doc["main"]["temp"].as<float>();
   }
 
-  if(doc.containsKey("timezone"))
+  if(doc["timezone"].is<int>())
   {
     gmtOffset_sec = doc["timezone"].as<int>();
   }
